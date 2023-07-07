@@ -50,9 +50,9 @@ if __name__ == "__main__":
     if config["join_beta"]:
         raise ValueError("This functionality isn't implemented yet.")
 
-    if config["beta"] and not re.match(r"^b\d+\.\d$", version):
-        raise ValueError("Invalid beta version. A beta version should follow the following format: b?.! "
-              "where ? is any number, and ! is a number from 0 to 9. Ex: b1.0")
+    if config["beta"] and not re.match(r"^\d+\.\d{3}$", version):
+        raise ValueError("Invalid beta version. A beta version should follow the following format: ?.!!! "
+              "where ? is any number, and ! is a number from 0 to 9. Ex: b1.001")
 
     if config["release"] and not re.match(r"^\d+\.\d$", version):
         raise ValueError("Invalid release version. A beta version should follow the following format: ?.! "
