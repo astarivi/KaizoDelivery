@@ -1,0 +1,43 @@
+name: Check for anime_ids.sqlite3 updates
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  check-for-updates:
+    runs-on: light-executor
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run update script
+        run: |
+          cd scripts && python3 update_ids.py
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          changed_files=$(git diff --name-only)
+          
+          if [ -n "$changed_files" ]; then
+            echo "CHANGED=true" >> $GITHUB_ENV
+          fi
+
+      - name: Configure Git
+        if: env.CHANGED == 'true'
+        run: |
+          git config --global user.name "Kaizo CI"
+          git config --global user.email "111199883+astarivi@users.noreply.github.com"
+
+      - name: Push changes
+        if: env.CHANGED == 'true'
+        run: |
+          git add .
+          git commit -m "Update anime_ids.sqlite3 version"
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
