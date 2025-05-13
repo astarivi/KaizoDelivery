@@ -1,2 +1,4 @@
 .idea/
 .vscode/
+anime-offline-database.json
+anime_ids_temp.sqlite3
