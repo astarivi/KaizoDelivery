@@ -28,8 +28,15 @@ query($page:Int,$week_start:Int,$week_end:Int){
 }
 """
 
+
 HEADERS = {
     "Accept": "application/json",
+    "Content-Type": "application/vnd.api+json"
+}
+
+
+KITSU_HEADERS = {
+    "Accept": "application/vnd.api+json",
     "Content-Type": "application/vnd.api+json"
 }
 
@@ -52,6 +59,23 @@ def execute_request(body, retries=3) -> HTTPResponse | None:
 
         if attempt < retries - 1:
             time.sleep(2)
+
+    return None
+
+
+def get_kitsu_data(kitsu_id, retries=3) -> dict | None:
+    c = http.client.HTTPSConnection("kitsu.io")
+
+    for attempt in range(retries):
+        try:
+            c.request("GET", f"/api/edge/anime/{kitsu_id}", headers=KITSU_HEADERS)
+            response = c.getresponse()
+
+            if response.status == 200 or response.status == 301:
+                return json.loads(response.read().decode("utf-8"))
+        except:
+            time.sleep(2)
+            continue
 
     return None
 
@@ -121,10 +145,17 @@ def main(sql):
                 print(f"Couldn't find kitsu id for {entry["media"]["id"]}")
                 continue
 
+            kitsu_data = get_kitsu_data(kitsu_id)
+
+            if kitsu_data is None:
+                print(f"Couldn't get kitsu data for id {kitsu_id}")
+                continue
+
             result.append({
                 "id": kitsu_id,
                 "airingAt": entry["airingAt"],
-                "next_episode": entry["episode"]
+                "next_episode": entry["episode"],
+                "data": kitsu_data["data"]
             })
 
         if not json_data["data"]["Page"]["pageInfo"]["hasNextPage"]:
@@ -133,7 +164,7 @@ def main(sql):
         page += 1
 
     print(f"Saving new airing schedule, new length: {len(result)}")
-    with open(target_file, "w") as f:
+    with open(target_file, "w", encoding='utf-8') as f:
         json.dump(result, f, indent=4)
 
 
