@@ -30,7 +30,7 @@ jobs:
       - name: Configure Git
         if: env.CHANGED == 'true'
         run: |
-          git config --global user.name "Kaizo CI"
+          git config --global user.name "k.CI"
           git config --global user.email "111199883+astarivi@users.noreply.github.com"
 
       - name: Push changes

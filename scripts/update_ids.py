@@ -1,4 +1,6 @@
 import json
+import shutil
+import ijson
 import sqlite3
 import urllib.request
 from pathlib import Path
@@ -10,11 +12,14 @@ def url2id(url: str) -> int:
 
 
 def main():
+    print("Starting up")
     url = "https://raw.githubusercontent.com/manami-project/anime-offline-database/master/anime-offline-database.json"
-    sqlite_path = Path(__file__).resolve().parent.parent / "dist" / "anime_ids.sqlite3"
+    sqlite_path = Path("anime_ids_temp.sqlite3")
+    sqlite_path_final = Path(__file__).resolve().parent.parent / "dist" / "anime_ids.sqlite3"
     versions_file = Path(__file__).resolve().parent.parent / "metadata" / "versions.json"
     temporary_file = Path("anime-offline-database.json")
 
+    print("Checking version")
     with open(versions_file, "r") as f:
         versions = json.load(f)
 
@@ -28,13 +33,20 @@ def main():
                 break
             out_file.write(chunk)
 
-    with open(temporary_file, "r", encoding='utf-8') as f:
-        data = json.load(f)
+    remote_version_str = None
 
-    if temporary_file.exists():
-        temporary_file.unlink()
+    print("Streaming remote to RAM, checking version")
+    with open(temporary_file, "rb") as f:
+        parser = ijson.kvitems(f, "")
+        for key, value in parser:
+            if key == "lastUpdate":
+                remote_version_str = value
 
-    remote_version = datetime.strptime(data["lastUpdate"], "%Y-%m-%d").date()
+        if remote_version_str is None:
+            print("lastUpdate remote field not found")
+            return
+
+    remote_version = datetime.strptime(remote_version_str, "%Y-%m-%d").date()
 
     if remote_version <= stored_version:
         print("No updates found")
@@ -64,40 +76,63 @@ def main():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_anilist_id ON anime_ids (anilist_id);")
 
     added = 0
-    for anime in data.get("data", []):
-        sources = anime["sources"]
-        kitsu_id = None
-        mal_id = None
-        anilist_id = None
-        for source in sources:
-            if "https://anilist.co" in source:
-                anilist_id = url2id(source)
-            elif "https://kitsu" in source:
-                kitsu_id = url2id(source)
-            elif "https://myanimelist.net" in source:
-                mal_id = url2id(source)
 
-        if kitsu_id is not None and (mal_id is not None or anilist_id is not None):
-            cur.execute("""
-                INSERT INTO anime_ids (kitsu_id, mal_id, anilist_id)
-                VALUES (?, ?, ?)
-            """, (
-                kitsu_id,
-                mal_id,
-                anilist_id
-            ))
-            added += 1
+    with open(temporary_file, "rb") as f:
+        for anime in ijson.items(f, "data.item"):
+            sources = anime["sources"]
+            kitsu_id = None
+            mal_id = None
+            anilist_id = None
+            for source in sources:
+                if "https://anilist.co" in source:
+                    anilist_id = url2id(source)
+                elif "https://kitsu" in source:
+                    kitsu_id = url2id(source)
+                elif "https://myanimelist.net" in source:
+                    mal_id = url2id(source)
+
+            if kitsu_id is not None and (mal_id is not None or anilist_id is not None):
+                cur.execute("""
+                    INSERT INTO anime_ids (kitsu_id, mal_id, anilist_id)
+                    VALUES (?, ?, ?)
+                """, (
+                    kitsu_id,
+                    mal_id,
+                    anilist_id
+                ))
+
+                added += 1
 
     conn.commit()
     conn.close()
 
-    versions["database"] = data["lastUpdate"]
+    versions["database"] = remote_version_str
 
     with open(versions_file, "w") as f:
         json.dump(versions, f, indent=4)
+
+    if sqlite_path_final.exists():
+        sqlite_path_final.unlink()
+
+    shutil.copyfile(sqlite_path, sqlite_path_final)
+
+    if temporary_file.exists():
+        temporary_file.unlink()
 
     print(f"Finished: {added} entries written to {sqlite_path}, new version is {versions["database"]}")
 
 
 if __name__ == '__main__':
-    main()
+    temporary_file = Path("anime-offline-database.json")
+    sqlite_path = Path("anime_ids_temp.sqlite3")
+
+    try:
+        main()
+    except Exception as e:
+        print(f"Unhandled, unexpected error {e}")
+
+    if temporary_file.exists():
+        temporary_file.unlink()
+
+    if sqlite_path.exists():
+        sqlite_path.unlink()
